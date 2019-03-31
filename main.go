@@ -18,6 +18,11 @@ func main() {
 	addMigrationCmd.Documentation = cmds.AddMigrationDoc
 	bin.RegisterCommand(addMigrationCmd)
 
+	deployCmd := comandante.NewCommand("deploy", "deploy migrations", cmds.Deploy)
+	deployCmd.FlagInit = cmds.DeployFlagHandler
+	deployCmd.Documentation = cmds.DeployDoc
+	bin.RegisterCommand(deployCmd)
+
 	if err := bin.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 	}
