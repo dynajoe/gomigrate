@@ -4,20 +4,25 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // PlanFile represents a migration plan
 type PlanFile struct {
-	Name string
-	Path string
-	f    *os.File
+	Project    string
+	Name       string
+	Path       string
+	Migrations []Migration
+	f          *os.File
 }
 
 // MakePlanFile creates a new plan file. If one exists an error is returned.
-func MakePlanFile(config *Config, name string) error {
+func MakePlanFile(config Config, name string) error {
 	planPath := filepath.Join(config.RootDir, name+".plan")
 
 	header := []string{"%syntax-version=1.0.0", "%project=projectname", "%uri=https://project"}
@@ -37,8 +42,12 @@ func MakePlanFile(config *Config, name string) error {
 	return nil
 }
 
+type void struct{}
+
+var member void
+
 // LoadPlan creates a new plan file. The file is expected to exist.
-func LoadPlan(config *Config, name string) *PlanFile {
+func LoadPlan(config Config, name string) *PlanFile {
 	planPath := filepath.Join(config.RootDir, name+".plan")
 
 	data, err := ioutil.ReadFile(planPath)
@@ -47,16 +56,44 @@ func LoadPlan(config *Config, name string) *PlanFile {
 	}
 
 	lines := strings.Split(string(data), "\n")
+	var migrations []Migration
+	var migrationKeys = make(map[string]void)
+	var tags []string
 
 	for _, line := range lines {
-		fmt.Println(line)
+		firstRune, _ := utf8.DecodeRuneInString(line)
+
+		if len(line) > 0 && unicode.IsLetter(firstRune) {
+			if migration, err := ParseMigration(line); err == nil {
+				if _, exists := migrationKeys[migration.Name]; exists {
+					panic("Duplicate migration")
+				} else {
+					migrationKeys[migration.Name] = member
+				}
+
+				content, _ := ioutil.ReadFile(path.Join(config.RootDir, "deploy", migration.Name+".sql"))
+				migration.Content = string(content)
+
+				migrations = append(migrations, migration)
+			} else {
+				panic(err)
+			}
+		} else if firstRune == rune('@') {
+			tags = append(tags, line)
+		}
 	}
 
 	f, err := os.OpenFile(planPath, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		panic(err)
+	}
+
 	return &PlanFile{
-		Name: name,
-		Path: planPath,
-		f:    f,
+		Project:    "app",
+		Name:       name,
+		Path:       planPath,
+		Migrations: migrations,
+		f:          f,
 	}
 }
 
@@ -65,7 +102,7 @@ func migrationTemplate(plan string, name string) string {
 }
 
 // AddMigration adds a migration to the end of the plan file
-func (plan *PlanFile) AddMigration(config *Config, name string, comment string) error {
+func (plan *PlanFile) AddMigration(config Config, name string, comment string) error {
 	now := time.Now().UTC()
 
 	migrationPath := filepath.Join(config.RootDir, "deploy", name+".sql")

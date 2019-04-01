@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/joeandaverde/gomigrate/cmds"
+	_ "github.com/lib/pq"
 	"github.com/robmerrell/comandante"
 )
 
