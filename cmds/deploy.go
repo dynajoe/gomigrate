@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	"unicode/utf8"
 
 	"github.com/joeandaverde/gomigrate/core"
 	"github.com/joeandaverde/gomigrate/data"
@@ -29,27 +30,23 @@ func ensureRegistry(db *sql.DB) {
 
 	fmt.Println("Deploying registry...")
 	registrySQL := data.MakeSqitchRegistrySQL("sqitch")
-	fmt.Println(registrySQL)
 	_, err = db.Query(registrySQL)
 
 	if err != nil {
+		fmt.Println(err)
 		panic(err)
 	}
 }
 
-func deployChange(db *sql.DB, config core.Config, plan *core.PlanFile, change core.Migration) {
-	scriptHash := sha1.New()
-	scriptHash.Write([]byte(change.Content))
-	hashValue := fmt.Sprintf("%x", scriptHash.Sum(nil))
-	var changeExists bool
+func deployChange(db *sql.DB, config core.Config, plan *core.PlanFile, change core.Change) {
+	scriptHash := fmt.Sprintf("%x", sha1.Sum([]byte(change.Content)))
+	contentUTF8 := runesToUTF8Manual([]rune(change.Content))
+	changeID := fmt.Sprintf("%x", sha1.Sum([]byte("change "+string(len(contentUTF8))+"\000"+string(contentUTF8))))
 
-	err := db.QueryRow("SELECT true FROM sqitch.changes WHERE project = $1 AND script_hash = $2;", plan.Project, hashValue).Scan(&changeExists)
+	rows, err := db.Query("SELECT * FROM sqitch.changes WHERE project = $1 AND script_hash = $2;",
+		plan.Project, scriptHash)
 
-	if err != nil && err != sql.ErrNoRows {
-		panic("Error checking for migration")
-	}
-
-	if changeExists {
+	if rows.Next() {
 		fmt.Println("Change already deployed")
 		return
 	}
@@ -58,11 +55,13 @@ func deployChange(db *sql.DB, config core.Config, plan *core.PlanFile, change co
 
 	_, err = db.Exec(change.Content)
 
-	if err != nil {
+	if err == nil {
 		fmt.Println("ok")
+
 		_, err := db.Exec(`
-			INSERT INTO sqitch.changes(script_hash, change, project, note, committer_name, comitter_email, planned_at, planner_name, planner_email)
-			VALUES ($1, $2, $3, $4, $6, $7, $8, $9, $10);`, hashValue, change.Name, plan.Project, change.Comment, config.User, config.Email, change.Date, change.CreatedBy, change.CreatedBy)
+			INSERT INTO sqitch.changes (change_id, script_hash, change, project, note, committer_name, committer_email, planned_at, planner_name, planner_email)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
+			changeID, scriptHash, change.Name, plan.Project, change.Comment, config.User, config.Email, change.Date, change.CreatedBy, change.CreatedBy)
 
 		if err != nil {
 			fmt.Println(err)
@@ -72,15 +71,24 @@ func deployChange(db *sql.DB, config core.Config, plan *core.PlanFile, change co
 	}
 }
 
+func runesToUTF8Manual(rs []rune) []byte {
+	bs := make([]byte, len(rs)*utf8.UTFMax)
+
+	count := 0
+	for _, r := range rs {
+		count += utf8.EncodeRune(bs[count:], r)
+	}
+
+	return bs[:count]
+}
+
 func Deploy() error {
 	config := core.NewConfig()
 
 	plan := core.LoadPlan(config, planName)
 
-	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
-		config.Host, config.Port, config.User, config.Password, config.Database)
-
-	db, err := sql.Open("postgres", psqlInfo)
+	db, err := sql.Open("postgres", fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable",
+		config.User, config.Password, config.Host, config.Port, config.Database))
 
 	if err != nil {
 		panic(err)
@@ -90,7 +98,7 @@ func Deploy() error {
 
 	ensureRegistry(db)
 
-	for _, m := range plan.Migrations {
+	for _, m := range plan.Changes {
 		deployChange(db, config, plan, m)
 	}
 

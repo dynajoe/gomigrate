@@ -12,13 +12,13 @@ import (
 	"unicode/utf8"
 )
 
-// PlanFile represents a migration plan
+// PlanFile represents a change plan
 type PlanFile struct {
-	Project    string
-	Name       string
-	Path       string
-	Migrations []Migration
-	f          *os.File
+	Project string
+	Name    string
+	Path    string
+	Changes []Change
+	f       *os.File
 }
 
 // MakePlanFile creates a new plan file. If one exists an error is returned.
@@ -56,25 +56,25 @@ func LoadPlan(config Config, name string) *PlanFile {
 	}
 
 	lines := strings.Split(string(data), "\n")
-	var migrations []Migration
-	var migrationKeys = make(map[string]void)
+	var changes []Change
+	var changeKeys = make(map[string]void)
 	var tags []string
 
 	for _, line := range lines {
 		firstRune, _ := utf8.DecodeRuneInString(line)
 
 		if len(line) > 0 && unicode.IsLetter(firstRune) {
-			if migration, err := ParseMigration(line); err == nil {
-				if _, exists := migrationKeys[migration.Name]; exists {
-					panic("Duplicate migration")
+			if change, err := ParseChange(line); err == nil {
+				if _, exists := changeKeys[change.Name]; exists {
+					panic("Duplicate change")
 				} else {
-					migrationKeys[migration.Name] = member
+					changeKeys[change.Name] = member
 				}
 
-				content, _ := ioutil.ReadFile(path.Join(config.RootDir, "deploy", migration.Name+".sql"))
-				migration.Content = string(content)
+				content, _ := ioutil.ReadFile(path.Join(config.RootDir, "deploy", change.Name+".sql"))
+				change.Content = string(content)
 
-				migrations = append(migrations, migration)
+				changes = append(changes, change)
 			} else {
 				panic(err)
 			}
@@ -89,43 +89,43 @@ func LoadPlan(config Config, name string) *PlanFile {
 	}
 
 	return &PlanFile{
-		Project:    "app",
-		Name:       name,
-		Path:       planPath,
-		Migrations: migrations,
-		f:          f,
+		Project: "app",
+		Name:    name,
+		Path:    planPath,
+		Changes: changes,
+		f:       f,
 	}
 }
 
-func migrationTemplate(plan string, name string) string {
+func changeTemplate(plan string, name string) string {
 	return fmt.Sprintf("-- Deploy %s:%s to pg\nBEGIN;\n\n-- DDL HERE\n\nCOMMIT;", plan, name)
 }
 
-// AddMigration adds a migration to the end of the plan file
-func (plan *PlanFile) AddMigration(config Config, name string, comment string) error {
+// AddChange adds a change to the end of the plan file
+func (plan *PlanFile) AddChange(config Config, name string, comment string) error {
 	now := time.Now().UTC()
 
-	migrationPath := filepath.Join(config.RootDir, "deploy", name+".sql")
+	changePath := filepath.Join(config.RootDir, "deploy", name+".sql")
 
-	dirName := filepath.Dir(migrationPath)
+	dirName := filepath.Dir(changePath)
 
 	if err := os.MkdirAll(dirName, os.ModePerm); err != nil {
 		return err
 	}
 
-	migrationFile, err := os.Create(migrationPath)
+	changeFile, err := os.Create(changePath)
 
 	if err != nil {
 		return err
 	}
 
-	defer migrationFile.Close()
+	defer changeFile.Close()
 
-	if _, err := migrationFile.WriteString(migrationTemplate(plan.Name, name)); err != nil {
+	if _, err := changeFile.WriteString(changeTemplate(plan.Name, name)); err != nil {
 		return err
 	}
 
-	if err := migrationFile.Sync(); err != nil {
+	if err := changeFile.Sync(); err != nil {
 		return err
 	}
 

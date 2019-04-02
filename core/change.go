@@ -6,12 +6,13 @@ import (
 	"time"
 )
 
-type Migration struct {
+type Change struct {
 	Name      string
 	CreatedBy string
 	Date      time.Time
 	Comment   string
 	Content   string
+	Project   string
 }
 
 // ParseError describes a problem parsing a time string.
@@ -26,17 +27,17 @@ func (e *ParseError) Error() string {
 }
 
 //clinical/schema/patient 2019-04-01T00:47:14Z Joe Andaverde <joe.andaverde@gmail.com> # Note
-var migrationRegex = regexp.MustCompile(`(?P<name>[^\s]+)\s+(?P<date>[^\s]+)\s+(?P<created_by>[^#]+)#?(?P<comment>.*)`)
+var ChangeRegex = regexp.MustCompile(`(?P<name>[^\s]+)\s+(?P<date>[^\s]+)\s+(?P<created_by>[^#]+)#?(?P<comment>.*)`)
 
-func ParseMigration(raw string) (Migration, error) {
-	if match := migrationRegex.FindStringSubmatch(raw); match != nil {
+func ParseChange(raw string) (Change, error) {
+	if match := ChangeRegex.FindStringSubmatch(raw); match != nil {
 		date, err := time.Parse(time.RFC3339, strings.TrimSpace(match[2]))
 
 		if err != nil {
-			return Migration{}, err
+			return Change{}, err
 		}
 
-		return Migration{
+		return Change{
 			Name:      strings.TrimSpace(match[1]),
 			Date:      date,
 			CreatedBy: strings.TrimSpace(match[3]),
@@ -45,8 +46,8 @@ func ParseMigration(raw string) (Migration, error) {
 		}, nil
 	}
 
-	return Migration{}, &ParseError{
+	return Change{}, &ParseError{
 		Value:   raw,
-		Message: "Value does not match migration format.",
+		Message: "Value does not match Change format.",
 	}
 }

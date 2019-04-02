@@ -14,10 +14,10 @@ func main() {
 	bin := comandante.New("gomigrate", "Example program showing how to use Comandante")
 	bin.IncludeHelp()
 
-	addMigrationCmd := comandante.NewCommand("add", "add a new migration", cmds.AddMigration)
-	addMigrationCmd.FlagInit = cmds.AddMigrationFlagHandler
-	addMigrationCmd.Documentation = cmds.AddMigrationDoc
-	bin.RegisterCommand(addMigrationCmd)
+	addChangeCmd := comandante.NewCommand("add", "add a new migration", cmds.AddChange)
+	addChangeCmd.FlagInit = cmds.AddChangeFlagHandler
+	addChangeCmd.Documentation = cmds.AddChangeDoc
+	bin.RegisterCommand(addChangeCmd)
 
 	deployCmd := comandante.NewCommand("deploy", "deploy migrations", cmds.Deploy)
 	deployCmd.FlagInit = cmds.DeployFlagHandler

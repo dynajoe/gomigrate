@@ -6,21 +6,21 @@ import (
 	"github.com/joeandaverde/gomigrate/core"
 )
 
-var AddMigrationDoc = `
-Add a new migration
+var AddChangeDoc = `
+Add a new change
 `
 
-var migrationName string
+var changeName string
 var planName string
 
-func AddMigration() error {
+func AddChange() error {
 	config := core.NewConfig()
 	plan := core.LoadPlan(config, planName)
 
-	return plan.AddMigration(config, migrationName, "Note")
+	return plan.AddChange(config, changeName, "Note")
 }
 
-func AddMigrationFlagHandler(fs *flag.FlagSet) {
-	fs.StringVar(&migrationName, "name", "", "migration name")
+func AddChangeFlagHandler(fs *flag.FlagSet) {
+	fs.StringVar(&changeName, "name", "", "change name")
 	fs.StringVar(&planName, "plan", "sqitch", "plan name")
 }
